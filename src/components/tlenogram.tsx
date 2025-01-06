@@ -1,29 +1,15 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Loader2, Upload, Download } from "lucide-react"
-import Image from 'next/image'
 import useDebounce from '@/hooks/useDebounce'
 
 const DEBOUNCE_DELAY = 100
-const MAX_FILE_SIZE = 10 * 1024 * 1024
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 
 type OverlayType = 'none' | 'cracked' | 'branches' | 'chairs' | 'forest' | 'horror' | 'city'
-type SliderType = 'blend' | 'darkness' | 'noir' | 'grayscale' | 'simplicity'
-type SliderConfig = { id: SliderType, label: string, initial: number }
-type SliderValues = Record<SliderType, number>
-
-const sliderConfigs: SliderConfig[] = [
-  { id: 'grayscale', label: 'grayscale', initial: 100 },
-  { id: 'darkness', label: 'darkness', initial: 0 },
-  { id: 'noir', label: 'noir', initial: 20 },
-  { id: 'simplicity', label: 'simplicity', initial: 0 },
-  { id: 'blend', label: 'filter intensity', initial: 100 }
-]
 
 const overlays: Record<OverlayType, string | null> = {
   'none': null,
@@ -40,36 +26,110 @@ export default function Tlenogram() {
   const [processedImage, setProcessedImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [blendLevel, setBlendLevel] = useState(100)
+  const [darknessLevel, setDarknessLevel] = useState(0)
+  const [noirLevel, setNoirLevel] = useState(20)
+  const [grayscaleLevel, setGrayscaleLevel] = useState(100)
+  const [simplicityLevel, setSimplicityLevel] = useState(0)
   const [overlayType, setOverlayType] = useState<OverlayType>('none')
   const [overlayIntensity, setOverlayIntensity] = useState(50)
-
-  const [sliderValues, setSliderValues] = useState<SliderValues>(() => 
-    Object.fromEntries(sliderConfigs.map(config => [config.id, config.initial])) as SliderValues
-  )
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const workerRef = useRef<Worker | null>(null)
 
-  const debouncedSliderValues = Object.fromEntries(
-    Object.entries(sliderValues).map(([key, value]) => [
-      key,
-      useDebounce(value, DEBOUNCE_DELAY)
-    ])
-  ) as SliderValues
-
+  const debouncedBlendLevel = useDebounce(blendLevel, DEBOUNCE_DELAY)
+  const debouncedDarknessLevel = useDebounce(darknessLevel, DEBOUNCE_DELAY)
+  const debouncedNoirLevel = useDebounce(noirLevel, DEBOUNCE_DELAY)
+  const debouncedGrayscaleLevel = useDebounce(grayscaleLevel, DEBOUNCE_DELAY)
+  const debouncedSimplicityLevel = useDebounce(simplicityLevel, DEBOUNCE_DELAY)
   const debouncedOverlayType = useDebounce(overlayType, DEBOUNCE_DELAY)
   const debouncedOverlayIntensity = useDebounce(overlayIntensity, DEBOUNCE_DELAY)
 
-  const applyOverlay = useCallback(async (canvas: HTMLCanvasElement) => {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.ts', import.meta.url))
+
+    workerRef.current.onmessage = async (e) => {
+      const imageData = e.data
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.putImageData(imageData, 0, 0)
+
+      if (debouncedOverlayType !== 'none') {
+        await applyOverlay(canvas)
+      }
+      
+      setProcessedImage(canvas.toDataURL('image/png'))
+      setLoading(false)
+    }
+
+    return () => workerRef.current?.terminate()
+  }, [debouncedOverlayType, debouncedOverlayIntensity])
+
+  const processImage = async () => {
+    if (!imageRef.current || !workerRef.current || !canvasRef.current) return
+    setLoading(true)
+
+    const img = imageRef.current
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = img.width
+    canvas.height = img.height
+    ctx.drawImage(img, 0, 0)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+    workerRef.current.postMessage({
+      imageData,
+      blendLevel: debouncedBlendLevel,
+      darknessLevel: debouncedDarknessLevel,
+      noirLevel: debouncedNoirLevel,
+      grayscaleLevel: debouncedGrayscaleLevel,
+      simplicityLevel: debouncedSimplicityLevel,
+      overlayType: debouncedOverlayType,
+      overlayIntensity: debouncedOverlayIntensity
+    })
+  }
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('file too large. max 10mb')
+      return
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('only jpg, png, webp allowed')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      imageRef.current = null
+      setImage(e.target?.result as string)
+      setError(null)
+      event.target.value = ''
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const applyOverlay = async (canvas: HTMLCanvasElement) => {
     const overlayUrl = overlays[debouncedOverlayType]
     if (!overlayUrl) return canvas
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return canvas
 
-    const overlayImg = new window.Image()
+    const overlayImg = new Image()
     overlayImg.crossOrigin = 'anonymous'
     
     return new Promise<HTMLCanvasElement>((resolve) => {
@@ -109,81 +169,6 @@ export default function Tlenogram() {
       }
       overlayImg.src = overlayUrl
     })
-  }, [debouncedOverlayType, debouncedOverlayIntensity])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.ts', import.meta.url))
-
-    workerRef.current.onmessage = async (e) => {
-      const imageData = e.data
-      const canvas = canvasRef.current
-      if (!canvas) return
-
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.putImageData(imageData, 0, 0)
-
-      if (debouncedOverlayType !== 'none') {
-        await applyOverlay(canvas)
-      }
-      
-      setProcessedImage(canvas.toDataURL('image/png'))
-      setLoading(false)
-    }
-
-    return () => workerRef.current?.terminate()
-  }, [debouncedOverlayType, debouncedOverlayIntensity, applyOverlay])
-
-  const processImage = useCallback(async () => {
-    if (!imageRef.current || !workerRef.current || !canvasRef.current) return
-    setLoading(true)
-
-    const img = imageRef.current
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    canvas.width = img.width
-    canvas.height = img.height
-    ctx.drawImage(img, 0, 0)
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-
-    workerRef.current.postMessage({
-      imageData,
-      blendLevel: debouncedSliderValues.blend,
-      darknessLevel: debouncedSliderValues.darkness,
-      noirLevel: debouncedSliderValues.noir,
-      grayscaleLevel: debouncedSliderValues.grayscale,
-      simplicityLevel: debouncedSliderValues.simplicity,
-      overlayType: debouncedOverlayType,
-      overlayIntensity: debouncedOverlayIntensity
-    })
-  }, [debouncedSliderValues, debouncedOverlayType, debouncedOverlayIntensity])
-
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    if (file.size > MAX_FILE_SIZE) {
-      setError('file too large. max 10mb')
-      return
-    }
-
-    if (!ALLOWED_TYPES.includes(file.type as typeof ALLOWED_TYPES[number])) {
-      setError('only jpg, png, webp allowed')
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imageRef.current = null
-      setImage(e.target?.result as string)
-      setError(null)
-      event.target.value = ''
-    }
-    reader.readAsDataURL(file)
   }
 
   const downloadImage = () => {
@@ -199,7 +184,7 @@ export default function Tlenogram() {
 
   useEffect(() => {
     if (image && !imageRef.current) {
-      const img = new window.Image()
+      const img = new Image()
       img.onload = () => {
         imageRef.current = img
         processImage()
@@ -208,7 +193,16 @@ export default function Tlenogram() {
     } else if (imageRef.current) {
       processImage()
     }
-  }, [image, ...Object.values(debouncedSliderValues)])
+  }, [
+    image,
+    debouncedBlendLevel,
+    debouncedDarknessLevel,
+    debouncedNoirLevel,
+    debouncedGrayscaleLevel,
+    debouncedSimplicityLevel,
+    debouncedOverlayType,
+    debouncedOverlayIntensity
+  ])
 
   return (
     <div className="min-h-screen bg-black">
@@ -237,13 +231,10 @@ export default function Tlenogram() {
         {image && (
           <div className="mb-6">
             <div className="aspect-square relative overflow-hidden rounded-lg">
-              <Image 
+              <img 
                 src={processedImage || image || ''} 
-                alt="processed image"
-                width={500}
-                height={500}
+                alt="processed image" 
                 className="object-cover w-full h-full"
-                unoptimized
               />
               {loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -271,24 +262,78 @@ export default function Tlenogram() {
           <>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
-                {sliderConfigs.map(({ id, label }) => (
-                  <div key={id}>
-                    <p className="text-sm font-medium mb-2">
-                      {label} - {sliderValues[id]}%
-                    </p>
-                    <Slider
-                      id={`${id}-level`}
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[sliderValues[id]]}
-                      onValueChange={(value) => 
-                        setSliderValues(prev => ({ ...prev, [id]: value[0] }))
-                      }
-                      className="w-full"
-                    />
-                  </div>
-                ))}
+                <div>
+                  <p className="text-sm font-medium mb-2">
+                    grayscale - {grayscaleLevel}%
+                  </p>
+                  <Slider
+                    id="grayscale-level"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[grayscaleLevel]}
+                    onValueChange={(value) => setGrayscaleLevel(value[0])}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-2">
+                    darkness - {darknessLevel}%
+                  </p>
+                  <Slider
+                    id="darkness-level"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[darknessLevel]}
+                    onValueChange={(value) => setDarknessLevel(value[0])}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium mb-2">
+                    noir - {noirLevel}%
+                  </p>
+                  <Slider
+                    id="noir-level"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[noirLevel]}
+                    onValueChange={(value) => setNoirLevel(value[0])}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-2">
+                    simplicity - {simplicityLevel}%
+                  </p>
+                  <Slider
+                    id="simplicity-level"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[simplicityLevel]}
+                    onValueChange={(value) => setSimplicityLevel(value[0])}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  filter intensity - {blendLevel}%
+                </p>
+                <Slider
+                  id="blend-level"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={[blendLevel]}
+                  onValueChange={(value) => setBlendLevel(value[0])}
+                  className="w-full"
+                />
               </div>
             </div>
 
@@ -315,13 +360,10 @@ export default function Tlenogram() {
                         overlayType === key ? 'border-white' : 'border-transparent'
                       }`}
                     >
-                      <Image 
-                        src={url || ''} 
+                      <img 
+                        src={url || undefined} 
                         alt={key}
-                        width={100}
-                        height={100}
                         className="w-full h-full object-cover"
-                        unoptimized
                       />
                     </button>
                   )
