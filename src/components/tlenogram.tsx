@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Loader2, Upload, Download } from "lucide-react"
+import Image from 'next/image'
 import useDebounce from '@/hooks/useDebounce'
 
 const DEBOUNCE_DELAY = 100
@@ -87,7 +88,7 @@ export default function Tlenogram() {
     return () => workerRef.current?.terminate()
   }, [debouncedValues.overlayType, debouncedValues.overlayIntensity])
 
-  const processImage = async () => {
+  const processImage = useCallback(async () => {
     if (!imageRef.current || !workerRef.current || !canvasRef.current) return
     setLoading(true)
 
@@ -111,7 +112,7 @@ export default function Tlenogram() {
       overlayType: debouncedValues.overlayType,
       overlayIntensity: debouncedValues.overlayIntensity
     })
-  }
+  }, [debouncedValues])
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -144,7 +145,7 @@ export default function Tlenogram() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return canvas
 
-    const overlayImg = new Image()
+    const overlayImg = new window.Image()
     overlayImg.crossOrigin = 'anonymous'
     
     return new Promise<HTMLCanvasElement>((resolve) => {
@@ -199,7 +200,7 @@ export default function Tlenogram() {
 
   useEffect(() => {
     if (image && !imageRef.current) {
-      const img = new Image()
+      const img = new window.Image()
       img.onload = () => {
         imageRef.current = img
         processImage()
@@ -237,10 +238,13 @@ export default function Tlenogram() {
         {image && (
           <div className="mb-6">
             <div className="aspect-square relative overflow-hidden rounded-lg">
-              <img 
+              <Image 
                 src={processedImage || image || ''} 
-                alt="processed image" 
+                alt="processed image"
+                width={500}
+                height={500}
                 className="object-cover w-full h-full"
+                unoptimized
               />
               {loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
@@ -312,10 +316,13 @@ export default function Tlenogram() {
                         overlayType === key ? 'border-white' : 'border-transparent'
                       }`}
                     >
-                      <img 
-                        src={url || undefined} 
+                      <Image 
+                        src={url || ''} 
                         alt={key}
+                        width={100}
+                        height={100}
                         className="w-full h-full object-cover"
+                        unoptimized
                       />
                     </button>
                   )
