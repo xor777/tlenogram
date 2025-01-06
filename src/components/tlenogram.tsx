@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useReducer, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
@@ -21,57 +21,185 @@ const overlays: Record<OverlayType, string | null> = {
   'city': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/6-LMMBqJgiRbgyfTcb09R73grtjoamzt.jpg'
 }
 
+type State = {
+  image: string | null
+  processedImage: string | null
+  error: string | null
+  loading: boolean
+  blendLevel: number
+  darknessLevel: number
+  noirLevel: number
+  grayscaleLevel: number
+  simplicityLevel: number
+  overlayType: OverlayType
+  overlayIntensity: number
+}
+
+type Action =
+  | { type: 'SET_IMAGE'; payload: string | null }
+  | { type: 'SET_PROCESSED_IMAGE'; payload: string | null }
+  | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_BLEND_LEVEL'; payload: number }
+  | { type: 'SET_DARKNESS_LEVEL'; payload: number }
+  | { type: 'SET_NOIR_LEVEL'; payload: number }
+  | { type: 'SET_GRAYSCALE_LEVEL'; payload: number }
+  | { type: 'SET_SIMPLICITY_LEVEL'; payload: number }
+  | { type: 'SET_OVERLAY_TYPE'; payload: OverlayType }
+  | { type: 'SET_OVERLAY_INTENSITY'; payload: number }
+  | { type: 'RESET_IMAGE' }
+
+const initialState: State = {
+  image: null,
+  processedImage: null,
+  error: null,
+  loading: false,
+  blendLevel: 100,
+  darknessLevel: 0,
+  noirLevel: 20,
+  grayscaleLevel: 100,
+  simplicityLevel: 0,
+  overlayType: 'none',
+  overlayIntensity: 50,
+}
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'SET_IMAGE':
+      return { ...state, image: action.payload, error: null }
+    case 'SET_PROCESSED_IMAGE':
+      return { ...state, processedImage: action.payload, loading: false }
+    case 'SET_ERROR':
+      return { ...state, error: action.payload }
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload }
+    case 'SET_BLEND_LEVEL':
+      return { ...state, blendLevel: action.payload }
+    case 'SET_DARKNESS_LEVEL':
+      return { ...state, darknessLevel: action.payload }
+    case 'SET_NOIR_LEVEL':
+      return { ...state, noirLevel: action.payload }
+    case 'SET_GRAYSCALE_LEVEL':
+      return { ...state, grayscaleLevel: action.payload }
+    case 'SET_SIMPLICITY_LEVEL':
+      return { ...state, simplicityLevel: action.payload }
+    case 'SET_OVERLAY_TYPE':
+      return { ...state, overlayType: action.payload }
+    case 'SET_OVERLAY_INTENSITY':
+      return { ...state, overlayIntensity: action.payload }
+    case 'RESET_IMAGE':
+      return { ...state, image: null, processedImage: null, error: null }
+    default:
+      return state
+  }
+}
+
 export default function Tlenogram() {
-  const [image, setImage] = useState<string | null>(null)
-  const [processedImage, setProcessedImage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [blendLevel, setBlendLevel] = useState(100)
-  const [darknessLevel, setDarknessLevel] = useState(0)
-  const [noirLevel, setNoirLevel] = useState(20)
-  const [grayscaleLevel, setGrayscaleLevel] = useState(100)
-  const [simplicityLevel, setSimplicityLevel] = useState(0)
-  const [overlayType, setOverlayType] = useState<OverlayType>('none')
-  const [overlayIntensity, setOverlayIntensity] = useState(50)
-
-  const debouncedBlendLevel = useDebounce(blendLevel, DEBOUNCE_DELAY)
-  const debouncedDarknessLevel = useDebounce(darknessLevel, DEBOUNCE_DELAY)
-  const debouncedNoirLevel = useDebounce(noirLevel, DEBOUNCE_DELAY)
-  const debouncedGrayscaleLevel = useDebounce(grayscaleLevel, DEBOUNCE_DELAY)
-  const debouncedSimplicityLevel = useDebounce(simplicityLevel, DEBOUNCE_DELAY)
-  const debouncedOverlayType = useDebounce(overlayType, DEBOUNCE_DELAY)
-  const debouncedOverlayIntensity = useDebounce(overlayIntensity, DEBOUNCE_DELAY)
-
+  const [state, dispatch] = useReducer(reducer, initialState)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+
+  const debouncedBlendLevel = useDebounce(state.blendLevel, DEBOUNCE_DELAY)
+  const debouncedDarknessLevel = useDebounce(state.darknessLevel, DEBOUNCE_DELAY)
+  const debouncedNoirLevel = useDebounce(state.noirLevel, DEBOUNCE_DELAY)
+  const debouncedGrayscaleLevel = useDebounce(state.grayscaleLevel, DEBOUNCE_DELAY)
+  const debouncedSimplicityLevel = useDebounce(state.simplicityLevel, DEBOUNCE_DELAY)
+  const debouncedOverlayType = useDebounce(state.overlayType, DEBOUNCE_DELAY)
+  const debouncedOverlayIntensity = useDebounce(state.overlayIntensity, DEBOUNCE_DELAY)
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
     if (file.size > 10 * 1024 * 1024) {
-      setError('file too large. max 10mb')
+      dispatch({ type: 'SET_ERROR', payload: 'file too large. max 10mb' })
       return
     }
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('only jpg, png, webp allowed')
+      dispatch({ type: 'SET_ERROR', payload: 'only jpg, png, webp allowed' })
       return
     }
 
     const reader = new FileReader()
+
     reader.onload = (e) => {
       imageRef.current = null
-      setImage(e.target?.result as string)
-      setError(null)
+      dispatch({ type: 'SET_IMAGE', payload: e.target?.result as string })
       event.target.value = ''
     }
+
+    reader.onerror = () => {
+      dispatch({ type: 'SET_ERROR', payload: 'error reading file' })
+      reader.abort()
+    }
+
+    reader.onabort = () => {
+      dispatch({ type: 'SET_ERROR', payload: 'file reading was aborted' })
+    }
+
     reader.readAsDataURL(file)
+
+    return () => {
+      reader.abort()
+    }
   }
 
-  const processImage = async () => {
+  const applyOverlay = useCallback(async (canvas: HTMLCanvasElement) => {
+    const overlayUrl = overlays[debouncedOverlayType]
+    if (!overlayUrl) return canvas
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return canvas
+
+    const overlayImg = new Image()
+    overlayImg.crossOrigin = 'anonymous'
+
+    return new Promise<HTMLCanvasElement>((resolve) => {
+      overlayImg.onload = () => {
+        const overlayCanvas = overlayCanvasRef.current
+        if (!overlayCanvas) {
+          resolve(canvas)
+          return
+        }
+
+        overlayCanvas.width = canvas.width
+        overlayCanvas.height = canvas.height
+        const octx = overlayCanvas.getContext('2d', { willReadFrequently: true })
+        if (!octx) {
+          resolve(canvas)
+          return
+        }
+
+        const scale = Math.max(
+          canvas.width / overlayImg.width,
+          canvas.height / overlayImg.height
+        )
+        const scaledWidth = overlayImg.width * scale
+        const scaledHeight = overlayImg.height * scale
+        const x = (canvas.width - scaledWidth) / 2
+        const y = (canvas.height - scaledHeight) / 2
+
+        octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
+        octx.drawImage(overlayImg, x, y, scaledWidth, scaledHeight)
+        
+        ctx.globalAlpha = debouncedOverlayIntensity / 100
+        ctx.globalCompositeOperation = 'multiply'
+        ctx.drawImage(overlayCanvas, 0, 0)
+        ctx.globalAlpha = 1
+        ctx.globalCompositeOperation = 'source-over'
+
+        resolve(canvas)
+      }
+
+      overlayImg.onerror = () => resolve(canvas)
+      overlayImg.src = overlayUrl
+    })
+  }, [debouncedOverlayType, debouncedOverlayIntensity, overlayCanvasRef])
+
+  const processImage = useCallback(async () => {
     if (!imageRef.current || !canvasRef.current) return
-    setLoading(true)
+    dispatch({ type: 'SET_LOADING', payload: true })
 
     const img = imageRef.current
     const canvas = canvasRef.current
@@ -123,90 +251,60 @@ export default function Tlenogram() {
       await applyOverlay(canvas)
     }
     
-    setProcessedImage(canvas.toDataURL('image/png'))
-    setLoading(false)
-  }
-
-  const applyOverlay = async (canvas: HTMLCanvasElement) => {
-    const overlayUrl = overlays[debouncedOverlayType]
-    if (!overlayUrl) return canvas
-
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (!ctx) return canvas
-
-    const overlayImg = new Image()
-    overlayImg.crossOrigin = 'anonymous'
-
-    return new Promise<HTMLCanvasElement>((resolve) => {
-      overlayImg.onload = () => {
-        const overlayCanvas = overlayCanvasRef.current
-        if (!overlayCanvas) {
-          resolve(canvas)
-          return
-        }
-
-        overlayCanvas.width = canvas.width
-        overlayCanvas.height = canvas.height
-        const octx = overlayCanvas.getContext('2d', { willReadFrequently: true })
-        if (!octx) {
-          resolve(canvas)
-          return
-        }
-
-        const scale = Math.max(
-          canvas.width / overlayImg.width,
-          canvas.height / overlayImg.height
-        )
-        const scaledWidth = overlayImg.width * scale
-        const scaledHeight = overlayImg.height * scale
-        const x = (canvas.width - scaledWidth) / 2
-        const y = (canvas.height - scaledHeight) / 2
-
-        octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
-        octx.drawImage(overlayImg, x, y, scaledWidth, scaledHeight)
-        
-        ctx.globalAlpha = debouncedOverlayIntensity / 100
-        ctx.globalCompositeOperation = 'multiply'
-        ctx.drawImage(overlayCanvas, 0, 0)
-        ctx.globalAlpha = 1
-        ctx.globalCompositeOperation = 'source-over'
-
-        resolve(canvas)
-      }
-
-      overlayImg.onerror = () => resolve(canvas)
-      overlayImg.src = overlayUrl
-    })
-  }
-
-  useEffect(() => {
-    if (image && !imageRef.current) {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        imageRef.current = img
-        processImage()
-      }
-      img.src = image
-    } 
-    else if (imageRef.current) {
-      processImage()
-    }
+    dispatch({ type: 'SET_PROCESSED_IMAGE', payload: canvas.toDataURL('image/png') })
   }, [
-    image,
     debouncedBlendLevel,
     debouncedDarknessLevel,
     debouncedNoirLevel,
     debouncedGrayscaleLevel,
     debouncedSimplicityLevel,
     debouncedOverlayType,
-    debouncedOverlayIntensity
+    applyOverlay,
+    canvasRef,
+    imageRef
   ])
 
+  useEffect(() => {
+    let mounted = true
+    let currentImage: HTMLImageElement | null = null
+
+    if (state.image && !imageRef.current) {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      currentImage = img
+      
+      img.onload = () => {
+        if (!mounted) return
+        imageRef.current = img
+        processImage()
+      }
+
+      img.onerror = () => {
+        if (!mounted) return
+        dispatch({ type: 'SET_ERROR', payload: 'error loading image' })
+        dispatch({ type: 'RESET_IMAGE' })
+      }
+
+      img.src = state.image
+    } 
+    else if (imageRef.current) {
+      processImage()
+    }
+
+    return () => {
+      mounted = false
+      if (currentImage) {
+        currentImage.onload = null
+        currentImage.onerror = null
+        currentImage = null
+      }
+    }
+  }, [state.image, processImage])
+
   const downloadImage = () => {
-    if (!processedImage) return
+    if (!state.processedImage) return
     const link = document.createElement('a')
-    link.href = processedImage
+    link.href = state.processedImage
     link.download = 'tlenogram_image.png'
     document.body.appendChild(link)
     link.click()
@@ -235,29 +333,29 @@ export default function Tlenogram() {
           </Button>
         </div>
 
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        {state.error && <p className="text-red-400 text-sm mb-4">{state.error}</p>}
 
-        {image && (
+        {state.image && (
           <div className="mb-6">
             <div className="aspect-square relative overflow-hidden rounded-lg">
               <img 
-                src={processedImage || image || ''} 
+                src={state.processedImage || state.image || ''} 
                 alt="processed image" 
                 className="object-cover w-full h-full"
               />
-              {loading && (
+              {state.loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                   <Loader2 className="h-8 w-8 animate-spin text-white" />
                 </div>
               )}
             </div>
-            {processedImage && (
+            {state.processedImage && (
               <div className="mt-2 flex justify-end">
                 <Button
                   onClick={downloadImage}
                   className="bg-gray-800 text-white hover:bg-gray-700"
                   size="sm"
-                  disabled={loading}
+                  disabled={state.loading}
                 >
                   <Download className="w-4 h-4 mr-2" />
                   download
@@ -267,61 +365,61 @@ export default function Tlenogram() {
           </div>
         )}
 
-        {image && (
+        {state.image && (
           <>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium mb-2">grayscale - {grayscaleLevel}%</p>
+                  <p className="text-sm font-medium mb-2">grayscale - {state.grayscaleLevel}%</p>
                   <Slider
                     min={0}
                     max={100}
                     step={1}
-                    value={[grayscaleLevel]}
-                    onValueChange={(value) => setGrayscaleLevel(value[0])}
+                    value={[state.grayscaleLevel]}
+                    onValueChange={(value) => dispatch({ type: 'SET_GRAYSCALE_LEVEL', payload: value[0] })}
                   />
                 </div>
                 <div>
-                  <p className="text-sm font-medium mb-2">darkness - {darknessLevel}%</p>
+                  <p className="text-sm font-medium mb-2">darkness - {state.darknessLevel}%</p>
                   <Slider
                     min={0}
                     max={100}
                     step={1}
-                    value={[darknessLevel]}
-                    onValueChange={(value) => setDarknessLevel(value[0])}
+                    value={[state.darknessLevel]}
+                    onValueChange={(value) => dispatch({ type: 'SET_DARKNESS_LEVEL', payload: value[0] })}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium mb-2">noir - {noirLevel}%</p>
+                  <p className="text-sm font-medium mb-2">noir - {state.noirLevel}%</p>
                   <Slider
                     min={0}
                     max={100}
                     step={1}
-                    value={[noirLevel]}
-                    onValueChange={(value) => setNoirLevel(value[0])}
+                    value={[state.noirLevel]}
+                    onValueChange={(value) => dispatch({ type: 'SET_NOIR_LEVEL', payload: value[0] })}
                   />
                 </div>
                 <div>
-                  <p className="text-sm font-medium mb-2">simplicity - {simplicityLevel}%</p>
+                  <p className="text-sm font-medium mb-2">simplicity - {state.simplicityLevel}%</p>
                   <Slider
                     min={0}
                     max={100}
                     step={1}
-                    value={[simplicityLevel]}
-                    onValueChange={(value) => setSimplicityLevel(value[0])}
+                    value={[state.simplicityLevel]}
+                    onValueChange={(value) => dispatch({ type: 'SET_SIMPLICITY_LEVEL', payload: value[0] })}
                   />
                 </div>
               </div>
               <div>
-                <p className="text-sm font-medium mb-2">filter intensity - {blendLevel}%</p>
+                <p className="text-sm font-medium mb-2">filter intensity - {state.blendLevel}%</p>
                 <Slider
                   min={0}
                   max={100}
                   step={1}
-                  value={[blendLevel]}
-                  onValueChange={(value) => setBlendLevel(value[0])}
+                  value={[state.blendLevel]}
+                  onValueChange={(value) => dispatch({ type: 'SET_BLEND_LEVEL', payload: value[0] })}
                 />
               </div>
             </div>
@@ -330,9 +428,9 @@ export default function Tlenogram() {
               <p className="text-sm font-medium mb-2">overlay</p>
               <div className="grid grid-cols-4 gap-2">
                 <button
-                  onClick={() => setOverlayType('none')}
+                  onClick={() => dispatch({ type: 'SET_OVERLAY_TYPE', payload: 'none' })}
                   className={`aspect-square rounded overflow-hidden border-2 ${
-                    overlayType === 'none' ? 'border-white' : 'border-transparent'
+                    state.overlayType === 'none' ? 'border-white' : 'border-transparent'
                   }`}
                 >
                   <div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs text-white">
@@ -344,9 +442,9 @@ export default function Tlenogram() {
                   return (
                     <button
                       key={key}
-                      onClick={() => setOverlayType(key as OverlayType)}
+                      onClick={() => dispatch({ type: 'SET_OVERLAY_TYPE', payload: key as OverlayType })}
                       className={`aspect-square rounded overflow-hidden border-2 ${
-                        overlayType === key ? 'border-white' : 'border-transparent'
+                        state.overlayType === key ? 'border-white' : 'border-transparent'
                       }`}
                     >
                       <img 
@@ -360,17 +458,17 @@ export default function Tlenogram() {
               </div>
             </div>
 
-            {overlayType !== 'none' && (
+            {state.overlayType !== 'none' && (
               <div className="mt-6">
                 <p className="text-sm font-medium mb-2">
-                  overlay intensity - {overlayIntensity}%
+                  overlay intensity - {state.overlayIntensity}%
                 </p>
                 <Slider
                   min={0}
                   max={100}
                   step={1}
-                  value={[overlayIntensity]}
-                  onValueChange={(value) => setOverlayIntensity(value[0])}
+                  value={[state.overlayIntensity]}
+                  onValueChange={(value) => dispatch({ type: 'SET_OVERLAY_INTENSITY', payload: value[0] })}
                 />
               </div>
             )}
