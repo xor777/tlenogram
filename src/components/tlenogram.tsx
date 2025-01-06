@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
@@ -31,11 +31,79 @@ export default function Tlenogram() {
     'city': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/6-LMMBqJgiRbgyfTcb09R73grtjoamzt.jpg'
   }
 
+  const processImage = useCallback(async () => {
+    if (!image) return
+    setLoading(true)
+
+    const img = new Image()
+    img.onload = async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      ctx.drawImage(img, 0, 0)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+
+      const blendFactor = blendLevel / 100
+
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i]
+        let g = data[i + 1]
+        let b = data[i + 2]
+
+        // Apply grayscale
+        const gray = (r * 0.299 + g * 0.587 + b * 0.114)
+        const grayscaleFactor = (grayscaleLevel / 100) * blendFactor
+        r = r * (1 - grayscaleFactor) + gray * grayscaleFactor
+        g = g * (1 - grayscaleFactor) + gray * grayscaleFactor
+        b = b * (1 - grayscaleFactor) + gray * grayscaleFactor
+
+        // Apply noir (lift black point)
+        const noirFactor = (noirLevel / 100) * blendFactor
+        r = r + (255 - r) * noirFactor
+        g = g + (255 - g) * noirFactor
+        b = b + (255 - b) * noirFactor
+
+        // Apply simplicity (increase contrast)
+        const simplicityFactor = (simplicityLevel / 100) * blendFactor
+        r = r < 128 ? r * (1 - simplicityFactor) : r + (255 - r) * simplicityFactor
+        g = g < 128 ? g * (1 - simplicityFactor) : g + (255 - g) * simplicityFactor
+        b = b < 128 ? b * (1 - simplicityFactor) : b + (255 - b) * simplicityFactor
+
+        // Apply darkness
+        const darknessFactor = (darknessLevel / 100) * blendFactor
+        r *= (1 - darknessFactor)
+        g *= (1 - darknessFactor)
+        b *= (1 - darknessFactor)
+
+        data[i] = r
+        data[i + 1] = g
+        data[i + 2] = b
+      }
+
+      ctx.putImageData(imageData, 0, 0)
+
+      // Apply overlay if selected
+      if (overlayType !== 'none') {
+        await applyOverlay(canvas)
+      }
+
+      setProcessedImage(canvas.toDataURL('image/png'))
+      setLoading(false)
+    }
+    img.src = image
+  }, [image, blendLevel, darknessLevel, noirLevel, grayscaleLevel, simplicityLevel, overlayType, overlayIntensity])
+
   useEffect(() => {
     if (image) {
       processImage()
     }
-  }, [image, blendLevel, darknessLevel, noirLevel, grayscaleLevel, simplicityLevel, overlayType, overlayIntensity])
+  }, [image, processImage])
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -106,74 +174,6 @@ export default function Tlenogram() {
       }
       overlayImg.src = overlayUrl
     })
-  }
-
-  const processImage = async () => {
-    if (!image) return
-    setLoading(true)
-
-    const img = new Image()
-    img.onload = async () => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-
-      ctx.drawImage(img, 0, 0)
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const data = imageData.data
-
-      const blendFactor = blendLevel / 100
-
-      for (let i = 0; i < data.length; i += 4) {
-        let r = data[i]
-        let g = data[i + 1]
-        let b = data[i + 2]
-
-        // Apply grayscale
-        const gray = (r * 0.299 + g * 0.587 + b * 0.114)
-        const grayscaleFactor = (grayscaleLevel / 100) * blendFactor
-        r = r * (1 - grayscaleFactor) + gray * grayscaleFactor
-        g = g * (1 - grayscaleFactor) + gray * grayscaleFactor
-        b = b * (1 - grayscaleFactor) + gray * grayscaleFactor
-
-        // Apply noir (lift black point)
-        const noirFactor = (noirLevel / 100) * blendFactor
-        r = r + (255 - r) * noirFactor
-        g = g + (255 - g) * noirFactor
-        b = b + (255 - b) * noirFactor
-
-        // Apply simplicity (increase contrast)
-        const simplicityFactor = (simplicityLevel / 100) * blendFactor
-        r = r < 128 ? r * (1 - simplicityFactor) : r + (255 - r) * simplicityFactor
-        g = g < 128 ? g * (1 - simplicityFactor) : g + (255 - g) * simplicityFactor
-        b = b < 128 ? b * (1 - simplicityFactor) : b + (255 - b) * simplicityFactor
-
-        // Apply darkness
-        const darknessFactor = (darknessLevel / 100) * blendFactor
-        r *= (1 - darknessFactor)
-        g *= (1 - darknessFactor)
-        b *= (1 - darknessFactor)
-
-        data[i] = r
-        data[i + 1] = g
-        data[i + 2] = b
-      }
-
-      ctx.putImageData(imageData, 0, 0)
-
-      // Apply overlay if selected
-      if (overlayType !== 'none') {
-        await applyOverlay(canvas)
-      }
-
-      setProcessedImage(canvas.toDataURL('image/png'))
-      setLoading(false)
-    }
-    img.src = image
   }
 
   const downloadImage = () => {
