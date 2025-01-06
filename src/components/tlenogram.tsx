@@ -3,51 +3,14 @@
 import { useReducer, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Slider } from "@/components/ui/slider"
 import { Loader2, Upload, Download } from "lucide-react"
 import useDebounce from '@/hooks/useDebounce'
+import { FiltersSection } from './tlenogram/filters-section'
+import { OverlaysSection } from './tlenogram/overlays-section'
+import { State, Action, OverlayType } from './tlenogram/types'
+import { overlays } from './tlenogram/constants'
 
 const DEBOUNCE_DELAY = 100
-
-type OverlayType = 'none' | 'cracked' | 'branches' | 'chairs' | 'forest' | 'horror' | 'city'
-
-const overlays: Record<OverlayType, string | null> = {
-  'none': null,
-  'cracked': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/1-4BUwosPWLHIJuBhWNqD6vn91zlwOPl.png',
-  'branches': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2-Pww85QkRX55df7GW10JYVn7b7ejDGd.jpeg',
-  'chairs': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/3-v1ScrsshSwLjJwqqh5k2dIC00u2woA.jpg',
-  'forest': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/4-gbMk6jhu1yVKlbxTbWH9cnhZRAhiYx.jpg',
-  'horror': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/5-GkS1bV88jaR9UYwtT6SZkLE2ciX5Cl.jpeg',
-  'city': 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/6-LMMBqJgiRbgyfTcb09R73grtjoamzt.jpg'
-}
-
-type State = {
-  image: string | null
-  processedImage: string | null
-  error: string | null
-  loading: boolean
-  blendLevel: number
-  darknessLevel: number
-  noirLevel: number
-  grayscaleLevel: number
-  simplicityLevel: number
-  overlayType: OverlayType
-  overlayIntensity: number
-}
-
-type Action =
-  | { type: 'SET_IMAGE'; payload: string | null }
-  | { type: 'SET_PROCESSED_IMAGE'; payload: string | null }
-  | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_BLEND_LEVEL'; payload: number }
-  | { type: 'SET_DARKNESS_LEVEL'; payload: number }
-  | { type: 'SET_NOIR_LEVEL'; payload: number }
-  | { type: 'SET_GRAYSCALE_LEVEL'; payload: number }
-  | { type: 'SET_SIMPLICITY_LEVEL'; payload: number }
-  | { type: 'SET_OVERLAY_TYPE'; payload: OverlayType }
-  | { type: 'SET_OVERLAY_INTENSITY'; payload: number }
-  | { type: 'RESET_IMAGE' }
 
 const initialState: State = {
   image: null,
@@ -99,6 +62,7 @@ export default function Tlenogram() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const debouncedBlendLevel = useDebounce(state.blendLevel, DEBOUNCE_DELAY)
   const debouncedDarknessLevel = useDebounce(state.darknessLevel, DEBOUNCE_DELAY)
@@ -311,6 +275,10 @@ export default function Tlenogram() {
     document.body.removeChild(link)
   }
 
+  const handleFileButtonClick = () => {
+    fileInputRef.current?.click()
+  }
+
   return (
     <div className="min-h-screen bg-black">
       <div className="max-w-md mx-auto p-4 sm:p-6 bg-black text-white">
@@ -318,18 +286,21 @@ export default function Tlenogram() {
         
         <div className="mb-6">
           <Input
-            id="image-upload"
+            ref={fileInputRef}
             type="file"
             accept=".jpg,.jpeg,.png,.webp"
             onChange={handleImageUpload}
             className="hidden"
+            aria-label="upload image"
           />
           <Button
-            onClick={() => document.getElementById('image-upload')?.click()}
+            onClick={handleFileButtonClick}
             className="w-full bg-gray-800 text-white hover:bg-gray-700"
+            aria-controls={fileInputRef.current?.id}
+            aria-expanded="false"
           >
-            <Upload className="w-4 h-4 mr-2" />
-            choose file
+            <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
+            <span>choose file</span>
           </Button>
         </div>
 
@@ -357,8 +328,8 @@ export default function Tlenogram() {
                   size="sm"
                   disabled={state.loading}
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  download
+                  <Download className="w-4 h-4 mr-2" aria-hidden="true" />
+                  <span>download</span>
                 </Button>
               </div>
             )}
@@ -367,111 +338,8 @@ export default function Tlenogram() {
 
         {state.image && (
           <>
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium mb-2">grayscale - {state.grayscaleLevel}%</p>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[state.grayscaleLevel]}
-                    onValueChange={(value) => dispatch({ type: 'SET_GRAYSCALE_LEVEL', payload: value[0] })}
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-medium mb-2">darkness - {state.darknessLevel}%</p>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[state.darknessLevel]}
-                    onValueChange={(value) => dispatch({ type: 'SET_DARKNESS_LEVEL', payload: value[0] })}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium mb-2">noir - {state.noirLevel}%</p>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[state.noirLevel]}
-                    onValueChange={(value) => dispatch({ type: 'SET_NOIR_LEVEL', payload: value[0] })}
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-medium mb-2">simplicity - {state.simplicityLevel}%</p>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={[state.simplicityLevel]}
-                    onValueChange={(value) => dispatch({ type: 'SET_SIMPLICITY_LEVEL', payload: value[0] })}
-                  />
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-2">filter intensity - {state.blendLevel}%</p>
-                <Slider
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[state.blendLevel]}
-                  onValueChange={(value) => dispatch({ type: 'SET_BLEND_LEVEL', payload: value[0] })}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-sm font-medium mb-2">overlay</p>
-              <div className="grid grid-cols-4 gap-2">
-                <button
-                  onClick={() => dispatch({ type: 'SET_OVERLAY_TYPE', payload: 'none' })}
-                  className={`aspect-square rounded overflow-hidden border-2 ${
-                    state.overlayType === 'none' ? 'border-white' : 'border-transparent'
-                  }`}
-                >
-                  <div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs text-white">
-                    none
-                  </div>
-                </button>
-                {Object.entries(overlays).map(([key, url]) => {
-                  if (key === 'none') return null
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => dispatch({ type: 'SET_OVERLAY_TYPE', payload: key as OverlayType })}
-                      className={`aspect-square rounded overflow-hidden border-2 ${
-                        state.overlayType === key ? 'border-white' : 'border-transparent'
-                      }`}
-                    >
-                      <img 
-                        src={url || undefined} 
-                        alt={key}
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {state.overlayType !== 'none' && (
-              <div className="mt-6">
-                <p className="text-sm font-medium mb-2">
-                  overlay intensity - {state.overlayIntensity}%
-                </p>
-                <Slider
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[state.overlayIntensity]}
-                  onValueChange={(value) => dispatch({ type: 'SET_OVERLAY_INTENSITY', payload: value[0] })}
-                />
-              </div>
-            )}
+            <FiltersSection state={state} dispatch={dispatch} />
+            <OverlaysSection state={state} dispatch={dispatch} />
           </>
         )}
 
