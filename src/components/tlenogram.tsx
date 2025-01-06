@@ -52,94 +52,18 @@ export default function Tlenogram() {
   const imageRef = useRef<HTMLImageElement | null>(null)
   const workerRef = useRef<Worker | null>(null)
 
-  const debouncedValues = {
-    ...Object.fromEntries(
-      Object.entries(sliderValues).map(([key, value]) => [
-        key,
-        useDebounce(value, DEBOUNCE_DELAY)
-      ])
-    ) as SliderValues,
-    overlayType: useDebounce(overlayType, DEBOUNCE_DELAY),
-    overlayIntensity: useDebounce(overlayIntensity, DEBOUNCE_DELAY)
-  }
+  const debouncedSliderValues = Object.fromEntries(
+    Object.entries(sliderValues).map(([key, value]) => [
+      key,
+      useDebounce(value, DEBOUNCE_DELAY)
+    ])
+  ) as SliderValues
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
+  const debouncedOverlayType = useDebounce(overlayType, DEBOUNCE_DELAY)
+  const debouncedOverlayIntensity = useDebounce(overlayIntensity, DEBOUNCE_DELAY)
 
-    workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.ts', import.meta.url))
-
-    workerRef.current.onmessage = async (e) => {
-      const imageData = e.data
-      const canvas = canvasRef.current
-      if (!canvas) return
-
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.putImageData(imageData, 0, 0)
-
-      if (debouncedValues.overlayType !== 'none') {
-        await applyOverlay(canvas)
-      }
-      
-      setProcessedImage(canvas.toDataURL('image/png'))
-      setLoading(false)
-    }
-
-    return () => workerRef.current?.terminate()
-  }, [debouncedValues.overlayType, debouncedValues.overlayIntensity])
-
-  const processImage = useCallback(async () => {
-    if (!imageRef.current || !workerRef.current || !canvasRef.current) return
-    setLoading(true)
-
-    const img = imageRef.current
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    canvas.width = img.width
-    canvas.height = img.height
-    ctx.drawImage(img, 0, 0)
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-
-    workerRef.current.postMessage({
-      imageData,
-      blendLevel: debouncedValues.blend,
-      darknessLevel: debouncedValues.darkness,
-      noirLevel: debouncedValues.noir,
-      grayscaleLevel: debouncedValues.grayscale,
-      simplicityLevel: debouncedValues.simplicity,
-      overlayType: debouncedValues.overlayType,
-      overlayIntensity: debouncedValues.overlayIntensity
-    })
-  }, [debouncedValues])
-
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    if (file.size > MAX_FILE_SIZE) {
-      setError('file too large. max 10mb')
-      return
-    }
-
-    if (!ALLOWED_TYPES.includes(file.type as typeof ALLOWED_TYPES[number])) {
-      setError('only jpg, png, webp allowed')
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imageRef.current = null
-      setImage(e.target?.result as string)
-      setError(null)
-      event.target.value = ''
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const applyOverlay = async (canvas: HTMLCanvasElement) => {
-    const overlayUrl = overlays[debouncedValues.overlayType]
+  const applyOverlay = useCallback(async (canvas: HTMLCanvasElement) => {
+    const overlayUrl = overlays[debouncedOverlayType]
     if (!overlayUrl) return canvas
 
     const ctx = canvas.getContext('2d')
@@ -175,7 +99,7 @@ export default function Tlenogram() {
 
         octx.drawImage(overlayImg, x, y, scaledWidth, scaledHeight)
         
-        ctx.globalAlpha = debouncedValues.overlayIntensity / 100
+        ctx.globalAlpha = debouncedOverlayIntensity / 100
         ctx.globalCompositeOperation = 'multiply'
         ctx.drawImage(overlayCanvas, 0, 0)
         ctx.globalAlpha = 1
@@ -185,6 +109,81 @@ export default function Tlenogram() {
       }
       overlayImg.src = overlayUrl
     })
+  }, [debouncedOverlayType, debouncedOverlayIntensity])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.ts', import.meta.url))
+
+    workerRef.current.onmessage = async (e) => {
+      const imageData = e.data
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.putImageData(imageData, 0, 0)
+
+      if (debouncedOverlayType !== 'none') {
+        await applyOverlay(canvas)
+      }
+      
+      setProcessedImage(canvas.toDataURL('image/png'))
+      setLoading(false)
+    }
+
+    return () => workerRef.current?.terminate()
+  }, [debouncedOverlayType, debouncedOverlayIntensity, applyOverlay])
+
+  const processImage = useCallback(async () => {
+    if (!imageRef.current || !workerRef.current || !canvasRef.current) return
+    setLoading(true)
+
+    const img = imageRef.current
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = img.width
+    canvas.height = img.height
+    ctx.drawImage(img, 0, 0)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+    workerRef.current.postMessage({
+      imageData,
+      blendLevel: debouncedSliderValues.blend,
+      darknessLevel: debouncedSliderValues.darkness,
+      noirLevel: debouncedSliderValues.noir,
+      grayscaleLevel: debouncedSliderValues.grayscale,
+      simplicityLevel: debouncedSliderValues.simplicity,
+      overlayType: debouncedOverlayType,
+      overlayIntensity: debouncedOverlayIntensity
+    })
+  }, [debouncedSliderValues, debouncedOverlayType, debouncedOverlayIntensity])
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > MAX_FILE_SIZE) {
+      setError('file too large. max 10mb')
+      return
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type as typeof ALLOWED_TYPES[number])) {
+      setError('only jpg, png, webp allowed')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      imageRef.current = null
+      setImage(e.target?.result as string)
+      setError(null)
+      event.target.value = ''
+    }
+    reader.readAsDataURL(file)
   }
 
   const downloadImage = () => {
@@ -209,7 +208,7 @@ export default function Tlenogram() {
     } else if (imageRef.current) {
       processImage()
     }
-  }, [image, ...Object.values(debouncedValues)])
+  }, [image, ...Object.values(debouncedSliderValues)])
 
   return (
     <div className="min-h-screen bg-black">
