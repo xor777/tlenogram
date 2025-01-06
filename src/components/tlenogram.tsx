@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Loader2, Upload, Download } from "lucide-react"
+import useDebounce from '@/hooks/useDebounce'
+
+const DEBOUNCE_DELAY = 100
 
 export default function Tlenogram() {
   const [image, setImage] = useState<string | null>(null)
@@ -21,6 +24,15 @@ export default function Tlenogram() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
+  const workerRef = useRef<Worker | null>(null)
+
+  const debouncedBlendLevel = useDebounce(blendLevel, DEBOUNCE_DELAY)
+  const debouncedDarknessLevel = useDebounce(darknessLevel, DEBOUNCE_DELAY)
+  const debouncedNoirLevel = useDebounce(noirLevel, DEBOUNCE_DELAY)
+  const debouncedGrayscaleLevel = useDebounce(grayscaleLevel, DEBOUNCE_DELAY)
+  const debouncedSimplicityLevel = useDebounce(simplicityLevel, DEBOUNCE_DELAY)
+  const debouncedOverlayType = useDebounce(overlayType, DEBOUNCE_DELAY)
+  const debouncedOverlayIntensity = useDebounce(overlayIntensity, DEBOUNCE_DELAY)
 
   const overlays: Record<string, string | null> = {
     'none': null,
@@ -33,81 +45,58 @@ export default function Tlenogram() {
   }
 
   useEffect(() => {
-    if (image && !imageRef.current) {
-      const img = new Image()
-      img.onload = () => {
-        imageRef.current = img
-        processImage()
+    if (typeof window !== 'undefined') {
+      workerRef.current = new Worker(new URL('../workers/imageProcessor.worker.ts', import.meta.url))
+
+      workerRef.current.onmessage = async (e) => {
+        const imageData = e.data
+        const canvas = canvasRef.current
+        if (!canvas) return
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.putImageData(imageData, 0, 0)
+
+        // Apply overlay if selected
+        if (debouncedOverlayType !== 'none') {
+          await applyOverlay(canvas)
+        }
+        
+        setProcessedImage(canvas.toDataURL('image/png'))
+        setLoading(false)
       }
-      img.src = image
-    } else if (imageRef.current) {
-      processImage()
     }
-  }, [image, blendLevel, darknessLevel, noirLevel, grayscaleLevel, simplicityLevel, overlayType, overlayIntensity])
+
+    return () => {
+      workerRef.current?.terminate()
+    }
+  }, [debouncedOverlayType, debouncedOverlayIntensity])
 
   const processImage = async () => {
-    if (!imageRef.current) return
+    if (!imageRef.current || !workerRef.current || !canvasRef.current) return
     setLoading(true)
 
     const img = imageRef.current
     const canvas = canvasRef.current
-    if (!canvas) return
-
-    canvas.width = img.width
-    canvas.height = img.height
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    canvas.width = img.width
+    canvas.height = img.height
     ctx.drawImage(img, 0, 0)
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    const data = imageData.data
 
-    const blendFactor = blendLevel / 100
-
-    for (let i = 0; i < data.length; i += 4) {
-      let r = data[i]
-      let g = data[i + 1]
-      let b = data[i + 2]
-
-      // Apply grayscale
-      const gray = (r * 0.299 + g * 0.587 + b * 0.114)
-      const grayscaleFactor = (grayscaleLevel / 100) * blendFactor
-      r = r * (1 - grayscaleFactor) + gray * grayscaleFactor
-      g = g * (1 - grayscaleFactor) + gray * grayscaleFactor
-      b = b * (1 - grayscaleFactor) + gray * grayscaleFactor
-
-      // Apply noir (lift black point)
-      const noirFactor = (noirLevel / 100) * blendFactor
-      r = r + (255 - r) * noirFactor
-      g = g + (255 - g) * noirFactor
-      b = b + (255 - b) * noirFactor
-
-      // Apply simplicity (increase contrast)
-      const simplicityFactor = (simplicityLevel / 100) * blendFactor
-      r = r < 128 ? r * (1 - simplicityFactor) : r + (255 - r) * simplicityFactor
-      g = g < 128 ? g * (1 - simplicityFactor) : g + (255 - g) * simplicityFactor
-      b = b < 128 ? b * (1 - simplicityFactor) : b + (255 - b) * simplicityFactor
-
-      // Apply darkness
-      const darknessFactor = (darknessLevel / 100) * blendFactor
-      r *= (1 - darknessFactor)
-      g *= (1 - darknessFactor)
-      b *= (1 - darknessFactor)
-
-      data[i] = r
-      data[i + 1] = g
-      data[i + 2] = b
-    }
-
-    ctx.putImageData(imageData, 0, 0)
-
-    // Apply overlay if selected
-    if (overlayType !== 'none') {
-      await applyOverlay(canvas)
-    }
-
-    setProcessedImage(canvas.toDataURL('image/png'))
-    setLoading(false)
+    // Send data to Web Worker
+    workerRef.current.postMessage({
+      imageData,
+      blendLevel: debouncedBlendLevel,
+      darknessLevel: debouncedDarknessLevel,
+      noirLevel: debouncedNoirLevel,
+      grayscaleLevel: debouncedGrayscaleLevel,
+      simplicityLevel: debouncedSimplicityLevel,
+      overlayType: debouncedOverlayType,
+      overlayIntensity: debouncedOverlayIntensity
+    })
   }
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,7 +122,7 @@ export default function Tlenogram() {
   }
 
   const applyOverlay = async (canvas: HTMLCanvasElement) => {
-    const overlayUrl = overlays[overlayType as keyof typeof overlays]
+    const overlayUrl = overlays[debouncedOverlayType as keyof typeof overlays]
     if (!overlayUrl) return canvas
 
     const ctx = canvas.getContext('2d')
@@ -171,7 +160,7 @@ export default function Tlenogram() {
         octx.drawImage(overlayImg, x, y, scaledWidth, scaledHeight)
         
         // Apply overlay with specified intensity
-        ctx.globalAlpha = overlayIntensity / 100
+        ctx.globalAlpha = debouncedOverlayIntensity / 100
         ctx.globalCompositeOperation = 'multiply'
         ctx.drawImage(overlayCanvas, 0, 0)
         ctx.globalAlpha = 1
@@ -193,6 +182,28 @@ export default function Tlenogram() {
       document.body.removeChild(link)
     }
   }
+
+  useEffect(() => {
+    if (image && !imageRef.current) {
+      const img = new Image()
+      img.onload = () => {
+        imageRef.current = img
+        processImage()
+      }
+      img.src = image
+    } else if (imageRef.current) {
+      processImage()
+    }
+  }, [
+    image,
+    debouncedBlendLevel,
+    debouncedDarknessLevel,
+    debouncedNoirLevel,
+    debouncedGrayscaleLevel,
+    debouncedSimplicityLevel,
+    debouncedOverlayType,
+    debouncedOverlayIntensity
+  ])
 
   return (
     <div className="min-h-screen bg-black">
