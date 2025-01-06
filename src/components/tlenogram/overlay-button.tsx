@@ -1,3 +1,5 @@
+import Image from 'next/image'
+
 type OverlayButtonProps = {
   type: string
   url: string | null
@@ -24,15 +26,19 @@ export function OverlayButton({ type, url, isSelected, onClick }: OverlayButtonP
   return (
     <button
       onClick={onClick}
-      className={`aspect-square rounded overflow-hidden border-2 ${
+      className={`aspect-square relative rounded overflow-hidden border-2 ${
         isSelected ? 'border-white' : 'border-transparent'
       }`}
     >
-      <img 
-        src={url || undefined} 
-        alt={type}
-        className="w-full h-full object-cover"
-      />
+      {url && (
+        <Image 
+          src={url} 
+          alt={type}
+          className="object-cover"
+          fill
+          sizes="(max-width: 768px) 25vw, 10vw"
+        />
+      )}
     </button>
   )
 } 

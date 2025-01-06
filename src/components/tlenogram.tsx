@@ -4,10 +4,11 @@ import { useReducer, useRef, useEffect, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, Upload, Download } from "lucide-react"
+import Image from 'next/image'
 import useDebounce from '@/hooks/useDebounce'
 import { FiltersSection } from './tlenogram/filters-section'
 import { OverlaysSection } from './tlenogram/overlays-section'
-import { State, Action, OverlayType } from './tlenogram/types'
+import { State, Action } from './tlenogram/types'
 import { overlays } from './tlenogram/constants'
 
 const DEBOUNCE_DELAY = 100
@@ -116,7 +117,7 @@ export default function Tlenogram() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return canvas
 
-    const overlayImg = new Image()
+    const overlayImg = new window.Image()
     overlayImg.crossOrigin = 'anonymous'
 
     return new Promise<HTMLCanvasElement>((resolve) => {
@@ -233,7 +234,7 @@ export default function Tlenogram() {
     let currentImage: HTMLImageElement | null = null
 
     if (state.image && !imageRef.current) {
-      const img = new Image()
+      const img = new window.Image()
       img.crossOrigin = 'anonymous'
       currentImage = img
       
@@ -309,10 +310,13 @@ export default function Tlenogram() {
         {state.image && (
           <div className="mb-6">
             <div className="aspect-square relative overflow-hidden rounded-lg">
-              <img 
+              <Image 
                 src={state.processedImage || state.image || ''} 
                 alt="processed image" 
-                className="object-cover w-full h-full"
+                className="object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                priority
               />
               {state.loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
