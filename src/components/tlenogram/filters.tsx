@@ -1,13 +1,32 @@
-import { FilterSlider } from './filter-slider'
 import { Dispatch } from 'react'
 import { Action, State } from './types'
+import { Slider } from "@/components/ui/slider"
 
 type FiltersSectionProps = {
   state: State
   dispatch: Dispatch<Action>
 }
 
-export function FiltersSection({ state, dispatch }: FiltersSectionProps) {
+function FilterSlider({ label, value, onChange }: { 
+  label: string
+  value: number
+  onChange: (value: number) => void 
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium mb-2">{label} - {value}%</p>
+      <Slider
+        min={0}
+        max={100}
+        step={1}
+        value={[value]}
+        onValueChange={(values) => onChange(values[0])}
+      />
+    </div>
+  )
+}
+
+export function Filters({ state, dispatch }: FiltersSectionProps) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">

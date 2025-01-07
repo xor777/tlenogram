@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Loader2, Upload, Download } from "lucide-react"
 import Image from 'next/image'
 import useDebounce from '@/hooks/useDebounce'
-import { FiltersSection } from './tlenogram/filters-section'
-import { OverlaysSection } from './tlenogram/overlays-section'
+import { Filters } from './tlenogram/filters'
+import { Overlays } from './tlenogram/overlays'
 import { State, Action } from './tlenogram/types'
 import { overlays } from './tlenogram/constants'
 
@@ -342,8 +342,8 @@ export default function Tlenogram() {
 
         {state.image && (
           <>
-            <FiltersSection state={state} dispatch={dispatch} />
-            <OverlaysSection state={state} dispatch={dispatch} />
+            <Filters state={state} dispatch={dispatch} />
+            <Overlays state={state} dispatch={dispatch} />
           </>
         )}
 
