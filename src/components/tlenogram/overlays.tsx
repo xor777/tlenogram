@@ -28,7 +28,7 @@ function OverlayButton({
           isSelected ? 'border-white' : 'border-transparent'
         }`}
       >
-        <div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs text-white">
+        <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-xs text-white">
           none
         </div>
       </button>

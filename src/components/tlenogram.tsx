@@ -296,7 +296,7 @@ export default function Tlenogram() {
           />
           <Button
             onClick={handleFileButtonClick}
-            className="w-full bg-gray-800 text-white hover:bg-gray-700"
+            className="w-full"
             aria-controls={fileInputRef.current?.id}
             aria-expanded="false"
           >
@@ -328,7 +328,6 @@ export default function Tlenogram() {
               <div className="mt-2 flex justify-end">
                 <Button
                   onClick={downloadImage}
-                  className="bg-gray-800 text-white hover:bg-gray-700"
                   size="sm"
                   disabled={state.loading}
                 >
