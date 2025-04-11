@@ -231,7 +231,7 @@ export default function Tlenogram() {
 
       return inputCanvas; // Return the modified input canvas
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Error applying overlay:", error);
         let errorMessage = 'Unknown error applying overlay';
         if (error instanceof Error) {
