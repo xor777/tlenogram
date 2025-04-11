@@ -1,6 +1,7 @@
 import { Dispatch } from 'react'
 import { Action, State } from './types'
 import { Slider } from "@/components/ui/slider"
+import { SLIDER_MIN, SLIDER_MAX } from './constants'
 
 type FiltersSectionProps = {
   state: State
@@ -16,8 +17,8 @@ function FilterSlider({ label, value, onChange }: {
     <div>
       <p className="text-sm font-medium mb-2">{label} - {value}%</p>
       <Slider
-        min={0}
-        max={100}
+        min={SLIDER_MIN}
+        max={SLIDER_MAX}
         step={1}
         value={[value]}
         onValueChange={(values) => onChange(values[0])}

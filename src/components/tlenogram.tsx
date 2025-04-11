@@ -8,8 +8,42 @@ import Image from 'next/image'
 import useDebounce from '@/hooks/useDebounce'
 import { Filters } from './tlenogram/filters'
 import { Overlays } from './tlenogram/overlays'
-import { State, Action } from './tlenogram/types'
-import { overlays } from './tlenogram/constants'
+import { State, Action, StandardOverlayType } from './tlenogram/types'
+import {
+  overlays,
+  INITIAL_BLEND_LEVEL,
+  INITIAL_DARKNESS_LEVEL,
+  INITIAL_NOIR_LEVEL,
+  INITIAL_GRAYSCALE_LEVEL,
+  INITIAL_SIMPLICITY_LEVEL,
+  INITIAL_OVERLAY_TYPE,
+  INITIAL_OVERLAY_INTENSITY,
+  INITIAL_OVERLAY_ZOOM_SLIDER,
+  INITIAL_OVERLAY_ROTATION_SLIDER,
+  INITIAL_OVERLAY_OFFSET_X_SLIDER,
+  INITIAL_OVERLAY_OFFSET_Y_SLIDER,
+  MAX_FILE_SIZE_BYTES,
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_IMAGE_TYPES_STRING,
+  ERROR_FILE_TOO_LARGE,
+  ERROR_INVALID_FILE_TYPE,
+  ERROR_READING_FILE,
+  ERROR_ABORTED_READING,
+  ERROR_LOADING_IMAGE,
+  ERROR_GET_INPUT_CONTEXT,
+  ERROR_GET_OVERLAY_CONTEXT,
+  ERROR_OVERLAY_CANVAS_REF,
+  ERROR_APPLYING_OVERLAY,
+  ERROR_READING_OVERLAY
+} from './tlenogram/constants'
+import { sliderValueToZoom, sliderValueToRotation, sliderValueToOffsetPercent } from "@/lib/utils"
+import {
+  OverlayParameters,
+  loadAndProcessOverlay,
+  calculateOverlayParameters,
+  applyOverlayTransformations,
+  drawTiledOverlayImage
+} from '@/lib/canvasUtils'
 
 const DEBOUNCE_DELAY = 100
 
@@ -18,41 +52,56 @@ const initialState: State = {
   processedImage: null,
   error: null,
   loading: false,
-  blendLevel: 100,
-  darknessLevel: 0,
-  noirLevel: 20,
-  grayscaleLevel: 100,
-  simplicityLevel: 0,
-  overlayType: 'none',
-  overlayIntensity: 50,
+  blendLevel: INITIAL_BLEND_LEVEL,
+  darknessLevel: INITIAL_DARKNESS_LEVEL,
+  noirLevel: INITIAL_NOIR_LEVEL,
+  grayscaleLevel: INITIAL_GRAYSCALE_LEVEL,
+  simplicityLevel: INITIAL_SIMPLICITY_LEVEL,
+  overlayType: INITIAL_OVERLAY_TYPE,
+  overlayIntensity: INITIAL_OVERLAY_INTENSITY,
+  overlayZoom: INITIAL_OVERLAY_ZOOM_SLIDER,
+  overlayRotation: INITIAL_OVERLAY_ROTATION_SLIDER,
+  overlayOffsetX: INITIAL_OVERLAY_OFFSET_X_SLIDER,
+  overlayOffsetY: INITIAL_OVERLAY_OFFSET_Y_SLIDER,
+  customOverlayUrl: null
 }
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'SET_IMAGE':
-      return { ...state, image: action.payload, error: null }
+      return { ...state, image: action.payload, processedImage: null, error: null }
     case 'SET_PROCESSED_IMAGE':
       return { ...state, processedImage: action.payload, loading: false }
-    case 'SET_ERROR':
-      return { ...state, error: action.payload }
     case 'SET_LOADING':
       return { ...state, loading: action.payload }
-    case 'SET_BLEND_LEVEL':
-      return { ...state, blendLevel: action.payload }
+    case 'SET_ERROR':
+      return { ...state, error: action.payload, loading: false }
+    case 'SET_GRAYSCALE_LEVEL':
+      return { ...state, grayscaleLevel: action.payload }
     case 'SET_DARKNESS_LEVEL':
       return { ...state, darknessLevel: action.payload }
     case 'SET_NOIR_LEVEL':
       return { ...state, noirLevel: action.payload }
-    case 'SET_GRAYSCALE_LEVEL':
-      return { ...state, grayscaleLevel: action.payload }
     case 'SET_SIMPLICITY_LEVEL':
       return { ...state, simplicityLevel: action.payload }
+    case 'SET_BLEND_LEVEL':
+      return { ...state, blendLevel: action.payload }
     case 'SET_OVERLAY_TYPE':
       return { ...state, overlayType: action.payload }
     case 'SET_OVERLAY_INTENSITY':
       return { ...state, overlayIntensity: action.payload }
+    case 'SET_OVERLAY_ZOOM':
+      return { ...state, overlayZoom: action.payload }
+    case 'SET_OVERLAY_ROTATION':
+      return { ...state, overlayRotation: action.payload }
+    case 'SET_OVERLAY_OFFSET_X':
+      return { ...state, overlayOffsetX: action.payload }
+    case 'SET_OVERLAY_OFFSET_Y':
+      return { ...state, overlayOffsetY: action.payload }
+    case 'SET_CUSTOM_OVERLAY_URL':
+      return { ...state, customOverlayUrl: action.payload }
     case 'RESET_IMAGE':
-      return { ...state, image: null, processedImage: null, error: null }
+      return initialState
     default:
       return state
   }
@@ -64,6 +113,7 @@ export default function Tlenogram() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const customOverlayImageRef = useRef<HTMLImageElement | null>(null)
 
   const debouncedBlendLevel = useDebounce(state.blendLevel, DEBOUNCE_DELAY)
   const debouncedDarknessLevel = useDebounce(state.darknessLevel, DEBOUNCE_DELAY)
@@ -72,17 +122,22 @@ export default function Tlenogram() {
   const debouncedSimplicityLevel = useDebounce(state.simplicityLevel, DEBOUNCE_DELAY)
   const debouncedOverlayType = useDebounce(state.overlayType, DEBOUNCE_DELAY)
   const debouncedOverlayIntensity = useDebounce(state.overlayIntensity, DEBOUNCE_DELAY)
+  const debouncedCustomOverlayUrl = useDebounce(state.customOverlayUrl, DEBOUNCE_DELAY)
+  const debouncedOverlayZoom = useDebounce(state.overlayZoom, DEBOUNCE_DELAY)
+  const debouncedOverlayRotation = useDebounce(state.overlayRotation, DEBOUNCE_DELAY)
+  const debouncedOverlayOffsetX = useDebounce(state.overlayOffsetX, DEBOUNCE_DELAY)
+  const debouncedOverlayOffsetY = useDebounce(state.overlayOffsetY, DEBOUNCE_DELAY)
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (file.size > 10 * 1024 * 1024) {
-      dispatch({ type: 'SET_ERROR', payload: 'file too large. max 10mb' })
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      dispatch({ type: 'SET_ERROR', payload: ERROR_FILE_TOO_LARGE })
       return
     }
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      dispatch({ type: 'SET_ERROR', payload: 'only jpg, png, webp allowed' })
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      dispatch({ type: 'SET_ERROR', payload: ERROR_INVALID_FILE_TYPE })
       return
     }
 
@@ -92,75 +147,109 @@ export default function Tlenogram() {
       imageRef.current = null
       dispatch({ type: 'SET_IMAGE', payload: e.target?.result as string })
       event.target.value = ''
+      // Clean up listeners
+      reader.onload = null;
+      reader.onerror = null;
     }
 
     reader.onerror = () => {
-      dispatch({ type: 'SET_ERROR', payload: 'error reading file' })
-      reader.abort()
+      dispatch({ type: 'SET_ERROR', payload: ERROR_READING_FILE })
+      // Clean up listeners
+      reader.onload = null;
+      reader.onerror = null;
+      reader.abort() // Abort might still be relevant on error
     }
 
     reader.onabort = () => {
-      dispatch({ type: 'SET_ERROR', payload: 'file reading was aborted' })
+      dispatch({ type: 'SET_ERROR', payload: ERROR_ABORTED_READING })
+      // Clean up listeners if abort happens before load/error
+      reader.onload = null;
+      reader.onerror = null;
     }
 
     reader.readAsDataURL(file)
-
-    return () => {
-      reader.abort()
-    }
   }
 
-  const applyOverlay = useCallback(async (canvas: HTMLCanvasElement) => {
-    const overlayUrl = overlays[debouncedOverlayType]
-    if (!overlayUrl) return canvas
+  const applyOverlay = useCallback(async (inputCanvas: HTMLCanvasElement): Promise<HTMLCanvasElement> => {
+    let overlayUrl: string | null = null;
+    if (debouncedOverlayType === 'custom') {
+      overlayUrl = debouncedCustomOverlayUrl;
+    } else if (debouncedOverlayType !== 'none') {
+      // Only access overlays if the type is a standard one
+      overlayUrl = overlays[debouncedOverlayType as StandardOverlayType];
+    }
+    
+    if (!overlayUrl) return inputCanvas;
 
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (!ctx) return canvas
-
-    const overlayImg = new window.Image()
-    overlayImg.crossOrigin = 'anonymous'
-
-    return new Promise<HTMLCanvasElement>((resolve) => {
-      overlayImg.onload = () => {
-        const overlayCanvas = overlayCanvasRef.current
-        if (!overlayCanvas) {
-          resolve(canvas)
-          return
-        }
-
-        overlayCanvas.width = canvas.width
-        overlayCanvas.height = canvas.height
-        const octx = overlayCanvas.getContext('2d', { willReadFrequently: true })
-        if (!octx) {
-          resolve(canvas)
-          return
-        }
-
-        const scale = Math.max(
-          canvas.width / overlayImg.width,
-          canvas.height / overlayImg.height
-        )
-        const scaledWidth = overlayImg.width * scale
-        const scaledHeight = overlayImg.height * scale
-        const x = (canvas.width - scaledWidth) / 2
-        const y = (canvas.height - scaledHeight) / 2
-
-        octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height)
-        octx.drawImage(overlayImg, x, y, scaledWidth, scaledHeight)
-        
-        ctx.globalAlpha = debouncedOverlayIntensity / 100
-        ctx.globalCompositeOperation = 'multiply'
-        ctx.drawImage(overlayCanvas, 0, 0)
-        ctx.globalAlpha = 1
-        ctx.globalCompositeOperation = 'source-over'
-
-        resolve(canvas)
+    try {
+      const inputCtx = inputCanvas.getContext('2d', { willReadFrequently: true });
+      if (!inputCtx) {
+          throw new Error(ERROR_GET_INPUT_CONTEXT);
       }
 
-      overlayImg.onerror = () => resolve(canvas)
-      overlayImg.src = overlayUrl
-    })
-  }, [debouncedOverlayType, debouncedOverlayIntensity, overlayCanvasRef])
+      const overlayCanvas = overlayCanvasRef.current;
+      if (!overlayCanvas) {
+          throw new Error(ERROR_OVERLAY_CANVAS_REF);
+      }
+
+      overlayCanvas.width = inputCanvas.width;
+      overlayCanvas.height = inputCanvas.height;
+      const overlayCtx = overlayCanvas.getContext('2d', { willReadFrequently: true });
+      if (!overlayCtx) {
+          throw new Error(ERROR_GET_OVERLAY_CONTEXT);
+      }
+
+      // 1. Load and process the overlay image (grayscale if custom)
+      const processedOverlayCanvas = await loadAndProcessOverlay(overlayUrl, debouncedOverlayType === 'custom');
+
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      // 2. Calculate transformation parameters using debounced values
+      const params = calculateOverlayParameters(
+          debouncedOverlayZoom,
+          debouncedOverlayRotation,
+          debouncedOverlayOffsetX,
+          debouncedOverlayOffsetY,
+          inputCanvas.width,
+          inputCanvas.height,
+          processedOverlayCanvas.width,
+          processedOverlayCanvas.height
+      );
+
+      // 3. Apply transformations (rotation, clipping) to the overlay canvas context
+      applyOverlayTransformations(overlayCtx, overlayCanvas.width, overlayCanvas.height, params.rotationRadians);
+
+      // 4. Draw the tiled overlay onto the transformed overlay canvas
+      drawTiledOverlayImage(overlayCtx, processedOverlayCanvas, params, overlayCanvas.width, overlayCanvas.height);
+
+      // Restore context state (removes clipping and transformations)
+      overlayCtx.restore();
+
+      // 5. Composite the overlay onto the input canvas using debounced intensity
+      inputCtx.globalAlpha = debouncedOverlayIntensity / 100;
+      inputCtx.globalCompositeOperation = 'multiply';
+      inputCtx.drawImage(overlayCanvas, 0, 0);
+      inputCtx.globalAlpha = 1.0;
+      inputCtx.globalCompositeOperation = 'source-over';
+
+      return inputCanvas; // Return the modified input canvas
+
+    } catch (error: any) {
+        console.error("Error applying overlay:", error);
+        dispatch({ type: 'SET_ERROR', payload: `${ERROR_APPLYING_OVERLAY}: ${error.message}` });
+        return inputCanvas; // Return original canvas on failure
+    }
+  }, [
+    debouncedOverlayType,
+    debouncedOverlayIntensity,
+    debouncedCustomOverlayUrl,
+    debouncedOverlayZoom,
+    debouncedOverlayRotation,
+    debouncedOverlayOffsetX,
+    debouncedOverlayOffsetY,
+    overlayCanvasRef,
+    dispatch
+  ]);
 
   const processImage = useCallback(async () => {
     if (!imageRef.current || !canvasRef.current) return
@@ -171,14 +260,15 @@ export default function Tlenogram() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return
 
-    canvas.width = img.width
-    canvas.height = img.height
+    canvas.width = img.naturalWidth // Use naturalWidth/Height for original size
+    canvas.height = img.naturalHeight
     ctx.drawImage(img, 0, 0)
     
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const data = imageData.data
     const blendFactor = debouncedBlendLevel / 100
 
+    // Apply filters
     for (let i = 0; i < data.length; i += 4) {
       let r = data[i]
       let g = data[i + 1]
@@ -205,28 +295,31 @@ export default function Tlenogram() {
       g *= (1 - darknessFactor)
       b *= (1 - darknessFactor)
 
-      data[i] = r
-      data[i + 1] = g
-      data[i + 2] = b
+      data[i] = Math.max(0, Math.min(255, r))
+      data[i + 1] = Math.max(0, Math.min(255, g))
+      data[i + 2] = Math.max(0, Math.min(255, b))
     }
-
     ctx.putImageData(imageData, 0, 0)
 
+    let canvasToProcess = canvas
+
+    // Apply overlay if needed
     if (debouncedOverlayType !== 'none') {
-      await applyOverlay(canvas)
+      canvasToProcess = await applyOverlay(canvas) // Await and update canvas
     }
-    
-    dispatch({ type: 'SET_PROCESSED_IMAGE', payload: canvas.toDataURL('image/png') })
+
+    const dataUrl = canvasToProcess.toDataURL('image/png')
+    dispatch({ type: 'SET_PROCESSED_IMAGE', payload: dataUrl })
   }, [
-    debouncedBlendLevel,
+    state.image,
+    debouncedGrayscaleLevel,
     debouncedDarknessLevel,
     debouncedNoirLevel,
-    debouncedGrayscaleLevel,
     debouncedSimplicityLevel,
-    debouncedOverlayType,
+    debouncedBlendLevel,
     applyOverlay,
-    canvasRef,
-    imageRef
+    debouncedOverlayType,
+    dispatch
   ])
 
   useEffect(() => {
@@ -246,7 +339,7 @@ export default function Tlenogram() {
 
       img.onerror = () => {
         if (!mounted) return
-        dispatch({ type: 'SET_ERROR', payload: 'error loading image' })
+        dispatch({ type: 'SET_ERROR', payload: ERROR_LOADING_IMAGE })
         dispatch({ type: 'RESET_IMAGE' })
       }
 
@@ -280,6 +373,27 @@ export default function Tlenogram() {
     fileInputRef.current?.click()
   }
 
+  const handleCustomOverlayUpload = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const url = e.target?.result as string
+      if (url) {
+        dispatch({ type: 'SET_CUSTOM_OVERLAY_URL', payload: url })
+        dispatch({ type: 'SET_OVERLAY_TYPE', payload: 'custom' })
+      }
+      // Clean up listeners
+      reader.onload = null;
+      reader.onerror = null;
+    }
+    reader.onerror = () => {
+      dispatch({ type: 'SET_ERROR', payload: ERROR_READING_OVERLAY })
+      // Clean up listeners
+      reader.onload = null;
+      reader.onerror = null;
+    }
+    reader.readAsDataURL(file)
+  }
+
   return (
     <div className="min-h-screen bg-black">
       <div className="max-w-md mx-auto p-4 sm:p-6 bg-black text-white">
@@ -289,7 +403,7 @@ export default function Tlenogram() {
           <Input
             ref={fileInputRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.webp"
+            accept={ALLOWED_IMAGE_TYPES_STRING}
             onChange={handleImageUpload}
             className="hidden"
             aria-label="upload image"
@@ -342,7 +456,11 @@ export default function Tlenogram() {
         {state.image && (
           <>
             <Filters state={state} dispatch={dispatch} />
-            <Overlays state={state} dispatch={dispatch} />
+            <Overlays 
+              state={state} 
+              dispatch={dispatch} 
+              onCustomOverlayUpload={handleCustomOverlayUpload} 
+            />
           </>
         )}
 
