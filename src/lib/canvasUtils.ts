@@ -45,9 +45,15 @@ export async function loadAndProcessOverlay(
           tempCtx.putImageData(imageData, 0, 0);
         }
         resolve(tempCanvas);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error processing overlay image:", error);
-        reject(new Error(`${ERROR_PROCESSING_OVERLAY}: ${error.message}`));
+        let errorMessage = ERROR_PROCESSING_OVERLAY;
+        if (error instanceof Error) {
+          errorMessage = `${ERROR_PROCESSING_OVERLAY}: ${error.message}`;
+        } else if (typeof error === 'string') {
+          errorMessage = `${ERROR_PROCESSING_OVERLAY}: ${error}`;
+        }
+        reject(new Error(errorMessage));
       }
     };
     overlayImg.onerror = (err) => {

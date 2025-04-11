@@ -36,9 +36,7 @@ import {
   ERROR_APPLYING_OVERLAY,
   ERROR_READING_OVERLAY
 } from './tlenogram/constants'
-import { sliderValueToZoom, sliderValueToRotation, sliderValueToOffsetPercent } from "@/lib/utils"
 import {
-  OverlayParameters,
   loadAndProcessOverlay,
   calculateOverlayParameters,
   applyOverlayTransformations,
@@ -113,7 +111,6 @@ export default function Tlenogram() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const customOverlayImageRef = useRef<HTMLImageElement | null>(null)
 
   const debouncedBlendLevel = useDebounce(state.blendLevel, DEBOUNCE_DELAY)
   const debouncedDarknessLevel = useDebounce(state.darknessLevel, DEBOUNCE_DELAY)
@@ -236,7 +233,13 @@ export default function Tlenogram() {
 
     } catch (error: any) {
         console.error("Error applying overlay:", error);
-        dispatch({ type: 'SET_ERROR', payload: `${ERROR_APPLYING_OVERLAY}: ${error.message}` });
+        let errorMessage = 'Unknown error applying overlay';
+        if (error instanceof Error) {
+          errorMessage = `${ERROR_APPLYING_OVERLAY}: ${error.message}`;
+        } else if (typeof error === 'string') {
+          errorMessage = `${ERROR_APPLYING_OVERLAY}: ${error}`;
+        }
+        dispatch({ type: 'SET_ERROR', payload: errorMessage });
         return inputCanvas; // Return original canvas on failure
     }
   }, [
@@ -311,7 +314,6 @@ export default function Tlenogram() {
     const dataUrl = canvasToProcess.toDataURL('image/png')
     dispatch({ type: 'SET_PROCESSED_IMAGE', payload: dataUrl })
   }, [
-    state.image,
     debouncedGrayscaleLevel,
     debouncedDarknessLevel,
     debouncedNoirLevel,

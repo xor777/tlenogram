@@ -1,18 +1,18 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import {
-  SLIDER_MIN,
+  // SLIDER_MIN, // No longer used
   SLIDER_MAX,
   SLIDER_DEFAULT_CENTER,
   ZOOM_MIN,
   ZOOM_MAX,
   ZOOM_DEFAULT,
-  ROTATION_MIN,
+  // ROTATION_MIN, // No longer used
   ROTATION_MAX,
-  ROTATION_DEFAULT,
-  OFFSET_MIN_PERCENT,
+  // ROTATION_DEFAULT, // No longer used
+  // OFFSET_MIN_PERCENT, // No longer used
   OFFSET_MAX_PERCENT,
-  OFFSET_DEFAULT_PERCENT,
+  // OFFSET_DEFAULT_PERCENT, // No longer used
 } from '@/components/tlenogram/constants'
 
 export function cn(...inputs: ClassValue[]) {
@@ -40,10 +40,10 @@ export function sliderValueToZoom(value: number): number {
 // SLIDER_DEFAULT_CENTER (50) -> ROTATION_DEFAULT (0)
 // SLIDER_MAX (100)           -> ROTATION_MAX (180)
 export function sliderValueToRotation(value: number): number {
-  const normalized = (value - SLIDER_DEFAULT_CENTER) / (SLIDER_MAX - SLIDER_DEFAULT_CENTER); // -1 to 1 (since slider goes 0-100)
+  // const normalized = (value - SLIDER_DEFAULT_CENTER) / (SLIDER_MAX - SLIDER_DEFAULT_CENTER); // -1 to 1 (since slider goes 0-100)
   // We need to scale this normalized value (0 to 1) from the second half of the slider
   // Or adjust the logic to map 0-100 -> -1 to 1 centered at 50
-  const normalizedCentered = (value - SLIDER_DEFAULT_CENTER) / (SLIDER_MAX - SLIDER_DEFAULT_CENTER); // This gives 0 to 1 for 50-100
+  // const normalizedCentered = (value - SLIDER_DEFAULT_CENTER) / (SLIDER_MAX - SLIDER_DEFAULT_CENTER); // This gives 0 to 1 for 50-100
   // Let's re-normalize to -1 to 1 based on the full slider range 0-100
   const fullNormalized = (value / SLIDER_MAX) * 2 - 1; // Maps 0 -> -1, 50 -> 0, 100 -> 1
   // return normalizedCentered * ROTATION_MAX; // This was incorrect

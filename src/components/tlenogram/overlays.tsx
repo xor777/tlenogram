@@ -1,12 +1,10 @@
 import { Dispatch, useRef } from 'react'
-import { Action, State, OverlayType, StandardOverlayType } from './types'
+import { Action, State, StandardOverlayType } from './types'
 import { overlays, SLIDER_MIN, SLIDER_MAX, SLIDER_DEFAULT_CENTER } from './constants'
 import Image from 'next/image'
 import { Slider } from "@/components/ui/slider"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Plus } from "lucide-react"
-import { sliderValueToZoom, zoomToSliderValue, sliderValueToRotation, sliderValueToOffsetPercent } from "@/lib/utils"
+import { sliderValueToZoom, sliderValueToRotation, sliderValueToOffsetPercent } from "@/lib/utils"
 
 type OverlaysSectionProps = {
   state: State
